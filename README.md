@@ -21,4 +21,4 @@ same.
 
 See the pdf file attached to know more about the project.
 
-See the 'code_file' for the MATLAB code.
+See the file 'free_fall.m' for the MATLAB code.
