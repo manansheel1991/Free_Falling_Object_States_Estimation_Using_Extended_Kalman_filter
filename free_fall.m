@@ -1,0 +1,124 @@
+function free_fall
+
+% State space model
+delt = 0.1; % Time step interval in seconds
+rho_m=8910; %density of copper sphere in kg per metre cubic
+rho_g=1.225; %density of air
+S=0.0025*pi; %cross sectional area of sphere with radius 5 cm, 0.05 m
+C_d=0.1; %Drag Coefficient of sphere
+V_m=0.0001666*pi; %Volume of sphere in cubic metre
+g=9.81; %Acceleration due to gravity in m/s^2
+m=rho_m*V_m; %Mass of the sphere
+
+A=g-(rho_g*g/rho_m) % Free Fall model parameters A and B
+B=(rho_g*C_d*S)/(2*m)
+
+sigma_w = 1; % Process noise standard deviation
+Q_n = sigma_w^2*eye(2);% Process noise covariance matrix
+H_n = eye(2); % Measurement matrix (Direct Measurement is Made)
+sigma_v = 1; % Measurement noise standard deviation
+R_n = sigma_v^2; % Measurement noise covariance matrix
+
+% Initialization
+x(1:2,1) = [1000; 0]; % Initial height and initial velocity of sphere
+m(1:2,1) = x(1:2,1); % Gaussian posterior mean at time step 1
+P(1:2,1:2,1) = eye(2); % Gaussian posterior covariance at time step 1
+
+% Free Fall position and velocity estimation using extended Kalman filter
+
+for n = 2 : 200, % Time steps
+
+% State propagation
+w_n = sigma_w*randn(2,1); % State noise vector
+x(1:2,n) = f(x(1:2,n-1)) + w_n + [0;delt*A]; % State Equation
+
+% Generate measurements
+v_n = sigma_v*randn(1,1); % Measurement noise vector
+z_n = H_n*x(1:2,n) + v_n; % Linear Measurement Equation
+
+% State-transition function Jacobian matrix
+Ft_n = [1 -delt;0 1-2*B*delt*m(2,n-1)];
+
+% Compute Gaussian posterior mean and covariance at time step n
+[m(1:2,n),P(1:2,1:2,n)] = extended_kalman_filter (m(1:2,n-1),...
+P(1:2,1:2,n-1),z_n,@f,Ft_n,Q_n,@h,H_n,R_n);
+end
+
+% Plot of actual and estimated position and velocity of free falling body with time
+% Evolution in time
+t = [0:199]'*delt;
+
+figure (1) 
+plot(t,x(1,:),'b'); hold on, plot(t,m(1,:),'r--');
+axis([0 30 0 1500]);
+xlabel('time'); ylabel('position');
+title('Estimation of position of free falling body using extended Kalman filter');
+legend('actual position','estimated position');
+hold on, 
+
+figure (2)
+plot(t,x(2,:),'g.-'); hold on, plot(t,m(2,:),'m-.');
+axis([0 20 0 200]);
+xlabel('time'); ylabel('velocity');
+title('Estimation of velocity of free falling body using extended Kalman filter');
+legend('actual velocity','estimated velocity');
+
+%Plot of Errors in the estimation of position and velocity with time
+
+figure(3)
+P_e=x(1,:)-m(1,:); %Position error
+plot(t,P_e);
+hold on;
+axis([0 30 -200 200]);
+xlabel('time'); ylabel('Position Error');
+title('Error in estimation of position of free falling body using extended Kalman filter');
+
+figure(4)
+V_e=x(2,:)-m(2,:); %Velocity error
+plot(t,V_e);
+hold on;
+axis([0 20 -100 100]);
+xlabel('time'); ylabel('Velocity Error');
+title('Error in estimation of velocity of free falling body using extended Kalman filter');
+
+% State-transition function
+function x_n = f (x_n1)
+x_n = [x_n1(1,1)-delt*x_n1(2,1); x_n1(2,1)-B*delt*(x_n1(2,1))^2];
+end
+
+% Measurement function
+function y_n = h (x_n)
+y_n = x_n;
+end
+
+end
+
+function [m_n,P_n] = extended_kalman_filter (m_n1,P_n1,y_n,f,Ft_n,Q_n,h,Ht_n,R_n)
+
+% Extended Kalman filter prediction and update steps --- propagates
+% Gaussian posterior state distribution from time step n-1 to time step n
+% Inputs:
+% m_n1 - (Dx1 vector) Gaussian posterior mean at time step n-1
+% P_n1 - (DxD matrix) Gaussian posterior covariance at time step n-1
+% y_n - (Mx1 vector) measurements at time step n
+% f(x) - (Dx1 vector function of Dx1 vector x) state-transition function
+% Ft_n - (DxD matrix) state-transition Jacobian matrix at time step n
+% Q_n - (DxD matrix) Gaussian state noise covariance at time step n
+% h(x) - (Mx1 vector function of Dx1 vector x) measurement function
+% Ht_n - (MxD matrix) measurement Jacobian matrix at time step n
+% R_n - (MxM matrix) Gaussian measurement noise covariance at time step n
+%
+% Outputs:
+% m_n - (Dx1 vector) Gaussian posterior mean at time step n
+% P_n - (DxD matrix) Gaussian posterior covariance at time step n
+
+% Predict
+m_nn1 = feval(f,m_n1);
+P_nn1 = Ft_n*P_n1*Ft_n' + Q_n;
+
+% Update
+S_n = Ht_n*P_nn1*Ht_n' + R_n;
+K_n = P_nn1*Ht_n'/S_n;
+m_n = m_nn1 + K_n*(y_n-feval(h,m_nn1));
+P_n = P_nn1 - K_n*Ht_n*P_nn1;
+end
